@@ -49,7 +49,7 @@ Want to test the AI Dead Reckoning yourself?
 1. **Download the APK:** [Click here to download the App Release](#) *(Coming Soon - Build the APK using the instructions below)*
 2. **Install on Android:** Transfer the `app-debug.apk` to your phone and install it (Grant Location & Notification permissions on launch).
 3. **How to Test Offline AI:**
-   - Type a destination (e.g., "DTU Library") and hit **Get Directions**.
+   - Type a destination (e.g., "DNR Library") and hit **Get Directions**.
    - Hit **Start Route**.
    - Turn OFF your phone's Wi-Fi and Mobile Data.
    - Walk inside a building where the roof blocks the GPS.
@@ -57,7 +57,7 @@ Want to test the AI Dead Reckoning yourself?
 
 ### 💻 How to Build from Source
 If you are a developer and want to build the project locally:
-1. Clone this repository: `git clone https://github.com/yugam-dtu/sih-project.git`
+1. Clone this repositoryhttps://github.com/vishnuaenacodes/SIH-26168-DEAD-Reckoning 
 2. Open the `android_app` folder in **Android Studio**.
 3. Let Gradle sync and download dependencies (`onnxruntime`, `osmdroid`).
 4. Click **Build > Build Bundle(s) / APK(s) > Build APK(s)**.

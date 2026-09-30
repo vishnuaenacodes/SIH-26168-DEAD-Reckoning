@@ -20,6 +20,14 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.preference.PreferenceManager
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
+
 import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
 import android.text.Editable
@@ -45,6 +53,11 @@ class MainActivity : AppCompatActivity() {
     private var isNavigating = false
     private var targetLat: Double = 0.0
     private var targetLon: Double = 0.0
+
+    // Pointer drawables and state tracking for GPS vs AI Dead Reckoning
+    private var onlinePointerDrawable: Drawable? = null
+    private var deadReckoningPointerDrawable: Drawable? = null
+    private var currentPointerState: NavigationEngine.NavState? = null
 
     private val LOCATION_PERMISSION_REQUEST_CODE = 1001
 
@@ -318,21 +331,102 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-        private fun updateVehicleLocationOnMap(lat: Double, lon: Double, state: NavigationEngine.NavState) {
+    /**
+     * Generates a navigation pointer icon with high visibility:
+     * - Blue (#1E88E5) when GPS is Online & Active.
+     * - Bright Alert Orange/Red (#FF3D00) when GPS Blackout occurs and AI Dead Reckoning is Active.
+     */
+    private fun getVehiclePointerDrawable(isDeadReckoning: Boolean): Drawable {
+        if (isDeadReckoning && deadReckoningPointerDrawable != null) {
+            return deadReckoningPointerDrawable!!
+        }
+        if (!isDeadReckoning && onlinePointerDrawable != null) {
+            return onlinePointerDrawable!!
+        }
+
+        val density = resources.displayMetrics.density
+        val size = (48 * density).toInt()
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+
+        val colorPrimary = if (isDeadReckoning) {
+            Color.parseColor("#FF3D00") // Bright Orange/Red for AI Dead Reckoning
+        } else {
+            Color.parseColor("#1E88E5") // Vibrant Blue for Online GNSS / GPS
+        }
+        val haloColor = if (isDeadReckoning) {
+            Color.parseColor("#44FF3D00") // Translucent red alert halo
+        } else {
+            Color.parseColor("#441E88E5") // Translucent blue halo
+        }
+
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        val cx = size / 2f
+        val cy = size / 2f
+
+        // 1. Soft pulse / halo ring around pointer
+        paint.style = Paint.Style.FILL
+        paint.color = haloColor
+        canvas.drawCircle(cx, cy, 22 * density, paint)
+
+        // 2. White outer border ring for crisp contrast on any map background
+        paint.color = Color.WHITE
+        canvas.drawCircle(cx, cy, 14 * density, paint)
+
+        // 3. Main colored center circle
+        paint.color = colorPrimary
+        canvas.drawCircle(cx, cy, 11 * density, paint)
+
+        // 4. White center core dot
+        paint.color = Color.WHITE
+        canvas.drawCircle(cx, cy, 4 * density, paint)
+
+        // 5. Direction heading arrow / pointer
+        val arrowPath = Path().apply {
+            moveTo(cx, cy - 20 * density) // Tip pointing forward
+            lineTo(cx - 7 * density, cy - 10 * density)
+            lineTo(cx + 7 * density, cy - 10 * density)
+            close()
+        }
+        paint.color = colorPrimary
+        canvas.drawPath(arrowPath, paint)
+
+        val drawable = BitmapDrawable(resources, bitmap)
+        if (isDeadReckoning) {
+            deadReckoningPointerDrawable = drawable
+        } else {
+            onlinePointerDrawable = drawable
+        }
+        return drawable
+    }
+
+    private fun updateVehicleLocationOnMap(lat: Double, lon: Double, state: NavigationEngine.NavState) {
         if (lat == 0.0 && lon == 0.0) return // Ignore uninitialized coordinates
         
         val newPoint = GeoPoint(lat, lon)
+        val isDeadReckoning = (state == NavigationEngine.NavState.OFFLINE_ML_DEAD_RECKONING)
+
         if (vehicleMarker == null) {
             vehicleMarker = Marker(mapView).apply {
                 position = newPoint
-                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                icon = resources.getDrawable(android.R.drawable.ic_menu_mylocation, null)
-                title = "Vehicle"
+                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                icon = getVehiclePointerDrawable(isDeadReckoning)
+                title = if (isDeadReckoning) "Offline (AI/ML Dead Reckoning)" else "Online (GNSS)"
                 mapView.overlays.add(this)
             }
+            currentPointerState = state
         } else {
             vehicleMarker?.position = newPoint
+            // Dynamically change pointer icon color when switching between GPS and AI Dead Reckoning
+            if (currentPointerState != state) {
+                vehicleMarker?.icon = getVehiclePointerDrawable(isDeadReckoning)
+                currentPointerState = state
+            }
         }
+
+        // Update heading rotation (in degrees clockwise from North)
+        val headingDeg = Math.toDegrees(SensorService.navigationEngine.currentHeadingRad).toFloat()
+        vehicleMarker?.rotation = headingDeg
         
         // Follow the vehicle if navigation started!
         if (isNavigating) {
@@ -364,12 +458,14 @@ class MainActivity : AppCompatActivity() {
         // Change UI based on whether we are online or offline AI/ML mode
         if (state == NavigationEngine.NavState.ONLINE_GNSS) {
             vehicleMarker?.title = "Online (GNSS)"
-            tvStatus.setTextColor(android.graphics.Color.parseColor("#555555"))
+            vehicleMarker?.snippet = "GPS Signal Normal"
+            tvStatus.setTextColor(Color.parseColor("#1E88E5"))
             tvStatus.text = "System Status: Online (GPS Active)"
         } else {
             vehicleMarker?.title = "Offline (AI/ML Dead Reckoning)"
-            tvStatus.setTextColor(android.graphics.Color.RED)
-            tvStatus.text = "System Status: OFFLINE AI Dead Reckoning Active"
+            vehicleMarker?.snippet = "GPS Blackout - AI Dead Reckoning Active"
+            tvStatus.setTextColor(Color.parseColor("#FF3D00"))
+            tvStatus.text = "⚠️ GPS Blackout! AI Dead Reckoning Active"
         }
 
         mapView.invalidate()

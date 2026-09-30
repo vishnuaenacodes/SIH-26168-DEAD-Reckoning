@@ -20,3 +20,14 @@ local.properties
 .idea/
 *.iml
 .DS_Store
+
+# Android SDK components (installed locally)
+build-tools/
+emulator/
+licenses/
+platform-tools/
+platforms/
+sources/
+skins/
+.temp/
+.knownPackages
